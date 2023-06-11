@@ -1,0 +1,405 @@
+---
+title: "STAT460-FinalProject-12330225"
+author: "Chau Yuen Ying 12330225"
+date: "2020/12/14"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r install}
+#install.packages("ggpubr")
+```
+
+```{r library}
+library(ISLR)### Data Mining Package
+library(dplyr)###Documentation package
+library(ggplot2)### Package for graphics
+library(epiDisplay)
+library("ggpubr")
+library(leaps)
+library("Hmisc")
+library(e1071)
+library(scales)
+library(ROCR)
+library(tidyr)
+library(tidyverse)
+library(caret)
+library(MASS)
+library(boot)
+library("pROC")
+library(klaR)
+library(factoextra)
+library('randomForest')
+library('ROCR')
+library(mice)
+library(dummies)
+library('class')
+library(rpart)
+library(rpart.plot)
+```
+
+### 4.	Data description 
+
+```{r import}
+mushrooms = data.frame(read.csv("data/mushrooms.csv"))
+```
+
+```{r read}
+head(mushrooms)
+```
+
+```{r}
+dim(mushrooms)
+```
+
+##### Missing data  
+'?' = missing data. So, '?' convert to NA data
+```{r missing data}
+mushrooms[mushrooms=='?'] <- NA
+colSums(is.na(mushrooms))
+```
+Only stalk.root has missing data.
+
+Convert to Factor
+```{r as fator}
+mushrooms <- data.frame(lapply(mushrooms[,], as.factor))
+str(mushrooms)
+```
+
+
+Check the missing data percentage
+```{r}
+(2480/8124)*100
+```
+As the missing data has 30.5%, it will be missing data treatment.
+
+Missing data Bar Chart
+```{r}
+ggplot(data=mushrooms, aes_string(x='stalk.root', fill='class')) +
+    geom_bar(alpha=0.5, position="dodge") +
+    theme_minimal()
+```
+  
+On the above bar chat, missing data has more class p type. 
+
+
+
+
+```{r fig.height=5, fig.width=20}
+md.pattern(mushrooms)
+```
+Based on the above missing data pattern, the missing data has not pattern and random. 
+
+Alougth these missing data may effect class type, the data size enough to provided information for y variable. So the missing data will be removed.
+```{r mice}
+mushrooms <- na.omit(mushrooms) #Omit empty rows
+ 
+anyNA(mushrooms)
+```
+No missing data in data
+
+```{r}
+dim(mushrooms)
+```
+New data size is 5644
+
+```{r}
+str(mushrooms)
+```
+
+
+
+### 5.	Exploratory and descriptive analysis of data  
+##### Bar chart  
+```{r}
+summary(mushrooms)
+```
+
+
+Bar Chart
+```{r table}
+for (col in names(mushrooms[,])){
+  print(
+    ggplot(data=mushrooms, aes_string(x=col, fill=col), nrow = 4) +
+    geom_bar(alpha=0.5, position="dodge") +
+    theme_minimal()
+  )
+}
+```
+veil.type has only once type. 
+Also, some variables have seriously on once side, such as cap.shape, gill.attachment, gill.spacing, gill.size, vill.coulor, ring.number.
+
+
+Bar Chart
+```{r}
+par(mfrow=c(2,2))
+for (col in names(mushrooms[, -1])){
+  print(
+    ggplot(data=mushrooms, aes_string(x=col, fill='class')) +
+    geom_bar(alpha=0.5, position="dodge") +
+    theme_minimal())
+}
+```
+
+On the above of bar chart, they show that some types of dependent variable is zero with the once class, such as, veil.color, cap.surface, odor etc. That's means someone feature only occur on once class mushroom.
+
+
+As veil.type only has one value and the count of veil.type equal to total data count, it will be removed.  
+```{r remove}
+mushrooms <- subset(mushrooms, select = - veil.type)
+```
+
+
+
+```{r}
+dim(mushrooms)
+```
+Data size: 5644; x variables: 22  
+
+#####Dummy data
+
+```{r dummy}
+mushrooms.dummy<-dummyVars(~.,data = mushrooms, fullRank=T)
+mushrooms.data<-data.frame(predict(mushrooms.dummy, newdata=mushrooms)) 
+head(mushrooms.data)
+```
+
+```{r}
+mushrooms.data = mushrooms.data %>% 
+                  dplyr::rename(
+                    class = class.p,
+                    bruises = bruises.t,
+                    gill.attachment = gill.attachment.f,
+                    stalk.shape = stalk.shape.t,
+                    gill.size = gill.size.n
+                    )
+
+str(mushrooms.data)
+```
+
+```{r}
+dim(mushrooms.data)
+```
+
+
+Split Data
+```{r}
+plyr::count(mushrooms[ ,1]) 
+```
+
+Since the dependent variables with two class are not balance, training data will be set as 60% of the total data to reduce the result bias.
+
+##### Split Data
+
+```{r split data}
+set.seed(1)
+mushrooms.train = mushrooms.data%>%
+  sample_frac(0.6)
+mushrooms.test = mushrooms.data%>%
+  setdiff(mushrooms.train)
+```
+
+
+```{r}
+head(mushrooms.train)
+head(mushrooms.test)
+```
+
+##### Feature Selection 
+Using random forest with cross-valid to process feature selection
+
+```{r feature select}
+control <- trainControl(method="repeatedcv", number=10, repeats=5)
+
+feature.select <- train(as.factor(class)~., data=mushrooms.train, method="rf", trControl=control)
+
+feature.importance <- varImp(feature.select, scale=FALSE)
+```
+
+
+```{r fig.height=20, fig.width=15}
+#summarize importance
+print(feature.importance)
+#plot importance
+plot(feature.importance)
+```
+
+Select the most 10 important feature: odor.f, spore.print.color.h, gill.size, odor.n, odor.p
+
+```{r}
+#rfe.control <- rfeControl(functions = rfFuncs, method="cv", number=5, repeats=3)
+
+#rfe.Profile <- rfe(as.factor(class)~., mushrooms.train,
+#                 sizes = c(1:10, 15, 20),
+#                 rfeControl = rfe.control)
+```
+
+
+```{r}
+#print(rfe.Profile)
+```
+
+
+```{r}
+# list the chosen features
+#predictors(rfe.Profile)[1:10]
+```
+
+
+```{r}
+#plot(rfe.Profile, type = c("g", "o"))
+```
+
+
+### Model  
+
+##### SVM
+```{r svm}
+set.seed(1)
+svm.fit =tune(svm, class ~ odor.f + spore.print.color.h + gill.size + odor.n + odor.p,
+               data = mushrooms.train, 
+               kernel = "radial", 
+               ranges =list(cost = c(0.1, 1, 5, 10, 100)),
+               gamma = c(0.5,1,2,3,4)
+              )
+```
+
+
+
+
+```{r}
+summary(svm.fit)
+```
+The best cost is 1
+
+
+```{r}
+svm.best = svm.fit$best.model
+summary(svm.best)
+```
+
+
+```{r}
+# Make predictions
+svm.pred <- predict(svm.best, mushrooms.test)
+svm.pred <- ifelse(svm.pred > 0.5, 1, 0)
+
+head(svm.pred)
+```
+
+
+
+```{r}
+# Model accuracy
+confusionMatrix(data = as.factor(svm.pred), reference = as.factor(mushrooms.test$class))
+```
+Accuracy is 95.88%
+
+
+```{r}
+svm.pred.train = predict(svm.best, mushrooms.train, decision.values=TRUE)
+```
+
+
+```{r}
+roc(mushrooms.train[, 1], as.numeric(as.factor(svm.pred.train)), plot=TRUE, print.auc = TRUE, legacy.axes=TRUE, main='ROC-Training Predication (SVM)')
+roc(mushrooms.test[, 1], as.numeric(as.factor(svm.pred)), plot=TRUE, print.auc = TRUE, legacy.axes=TRUE, main='ROC-Testing Predication (SVM)')
+```
+
+```{r}
+#rocplot(as.numeric(as.factor(svm.pred.train)), train.class, main = "ROC-SVM", )
+#rocplot(as.numeric(as.factor(svm.pred)), test.class, add = TRUE, col = "red")
+```
+
+##### Logistic Regression
+```{r}
+glm.fit = glm(class ~ odor.f + spore.print.color.h + gill.size + odor.n + odor.p,
+               data = mushrooms.train, family = binomial)
+
+summary(glm.fit)
+```
+Since spore.print.color.h is NA, it is removed.
+
+```{r glm}
+glm.fit = glm(class ~ odor.f + gill.size + odor.n + odor.p,
+               data = mushrooms.train, family = binomial)
+
+summary(glm.fit)
+```
+
+
+```{r glm prediction}
+# Make predictions
+glm.pred <- predict(glm.fit, mushrooms.test)
+glm.pred <- ifelse(glm.pred > 0.5, 1, 0)
+head(glm.pred)
+```
+
+
+```{r glm confusion matrix}
+# Model accuracy
+confusionMatrix(data = as.factor(glm.pred), reference = as.factor(mushrooms.test$class))
+```
+
+Accuracy is 94.64%
+
+
+```{r}
+library(tidyverse)
+library(broom)
+
+glm.data <- augment(glm.fit) %>% 
+  mutate(index = 1:n()) 
+
+glm.data %>% top_n(3, .cooksd)
+
+ggplot(glm.data, aes(index, .std.resid)) + 
+  geom_point(aes(color = class), alpha = .5) +
+  theme_bw()
+
+glm.data %>% 
+  filter(abs(.std.resid) > 3)
+
+car::vif(glm.fit)
+```
+
+
+
+```{r}
+glm.pred.train = predict(glm.fit, mushrooms.train, decision.values=TRUE)
+roc(mushrooms.train[, 1], as.numeric(as.factor(glm.pred.train)), plot=TRUE, print.auc = TRUE, legacy.axes=TRUE, main='ROC-Training Predication (Logistic Regression)')
+roc(mushrooms.test[, 1], as.numeric(as.factor(glm.pred)), plot=TRUE, print.auc = TRUE, legacy.axes=TRUE, main='ROC-Testing Predication (Logistic Regression)')
+```
+
+
+##### Naive Bayes Classifier
+
+```{r naive bayes}
+nb.fit = naiveBayes(as.factor(class)~odor.f + spore.print.color.h + gill.size + odor.n + odor.p, 
+              data=mushrooms.train)
+nb.fit
+```
+
+
+```{r bs prediction}
+nb.pred <- predict(nb.fit, mushrooms.test)
+
+# Model accuracy
+confusionMatrix(data = as.factor(nb.pred), reference = as.factor(mushrooms.test$class))
+```
+Accuracy is 85.56%
+
+
+
+```{r naive bayes roc}
+nb.pred.train = predict(nb.fit, mushrooms.train, decision.values=TRUE)
+roc(mushrooms.train[, 1], as.numeric(as.factor(nb.pred.train)), plot=TRUE, print.auc = TRUE, legacy.axes=TRUE, main='ROC-Training Predication (Naive Bayes Classifier)')
+roc(mushrooms.test[, 1], as.numeric(as.factor(nb.pred)), plot=TRUE, print.auc = TRUE, legacy.axes=TRUE, main='ROC-Testing Predication (Naive Bayes Classifier)')
+```
+
+
