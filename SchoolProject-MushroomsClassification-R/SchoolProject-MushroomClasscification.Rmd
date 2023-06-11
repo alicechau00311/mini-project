@@ -1,6 +1,6 @@
 ---
-title: "STAT460-FinalProject-12330225"
-author: "Chau Yuen Ying 12330225"
+title: "Mushrooms Classification"
+author: "Chau Yuen Ying"
 date: "2020/12/14"
 output:
   word_document: default
